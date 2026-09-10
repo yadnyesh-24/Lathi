@@ -1,0 +1,10 @@
+{
+  "_comment": "App-only extras keyed by OSM id ('node/123' or 'way/456'): photo URL, survey notes, check_date. Anything OSM tagging cannot express. Rebuild with npm run data:build after editing.",
+  "_example": {
+    "way/000000": {
+      "photo": "/photos/example.jpg",
+      "notes": "Ramp surface cracked near the top; still usable.",
+      "check_date": "2026-09-01"
+    }
+  }
+}

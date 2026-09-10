@@ -1,0 +1,18 @@
+{
+  "_comment": "Hand-written routing rules for specific buildings, keyed by OSM id. Applied by scripts/build-data.mjs to the building and to every room inside it. 'doors' lists the door nodes a route must end at, per profile and per floor ('*' = any floor). 'roomLevelFromNumber' derives a room's floor from its number when OSM has no level tag: 1xx -> ground (0), 2xx -> level 1, 3xx -> level 2.",
+  "buildings": {
+    "relation/7219496": {
+      "name": "Tutorial Block",
+      "roomLevelFromNumber": true,
+      "doors": {
+        "wheelchair": {
+          "0": ["node/2734116498"],
+          "1": ["node/14152492797"]
+        },
+        "normal": {
+          "*": ["node/2734116498", "node/14152492797", "node/13657840007"]
+        }
+      }
+    }
+  }
+}

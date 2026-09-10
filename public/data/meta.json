@@ -1,0 +1,39 @@
+{
+  "builtAt": "2026-09-06T20:10:09.277Z",
+  "osmFetchedAt": "2026-09-06T20:10:08.227Z",
+  "graph": {
+    "nodes": 6718,
+    "edges": 7381,
+    "ways": 1467,
+    "connectors": 23,
+    "components": 40,
+    "mainComponent": 6080
+  },
+  "levels": [
+    "0",
+    "1",
+    "2"
+  ],
+  "buildings": 580,
+  "namedBuildings": 174,
+  "indoor": 214,
+  "features": 286,
+  "featureKinds": {
+    "entrance": 146,
+    "crossing": 4,
+    "drinking_water": 5,
+    "toilets": 14,
+    "elevator": 1,
+    "other": 52,
+    "skywalk": 35,
+    "stairs": 25,
+    "ramp": 4
+  },
+  "places": 385,
+  "rooms": 32,
+  "qaIssues": {
+    "high": 35,
+    "medium": 16,
+    "low": 69
+  }
+}

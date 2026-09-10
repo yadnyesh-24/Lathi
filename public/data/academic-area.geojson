@@ -1,0 +1,27 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "IITK Academic Area",
+        "note": "Hand-drawn detailed-coverage polygon. Encloses the Lecture Hall Complexes, Faculty Building, Core Lab, Computer Centre, Main Auditorium, Western/Southern/Northern Labs, Rajeev Motwani Building, Chemical Engg, IME, Aero labs. Refine after the first survey pass; edit coordinates here and re-run npm run data:build."
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [80.2298, 26.5100],
+            [80.2330, 26.5100],
+            [80.2335, 26.5087],
+            [80.2382, 26.5087],
+            [80.2385, 26.5135],
+            [80.2375, 26.5172],
+            [80.2292, 26.5172],
+            [80.2298, 26.5100]
+          ]
+        ]
+      }
+    }
+  ]
+}

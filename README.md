@@ -1,222 +1,157 @@
-# Lathi
-# IITK Accessible — Frozen MVP Plan
+# Lathi — IITK Accessible
 
-Accessibility-aware navigation for IIT Kanpur. The website shows the whole IITK
-campus as a base map, but the detailed accessibility layer and routing cover
-only the **Academic Area**. Users pick From, To, and an accessibility profile
-(Normal / Wheelchair first) and get the most *suitable* route, not just the
-shortest one.
+Accessibility-aware pedestrian navigation for IIT Kanpur, built on OpenStreetMap data.
+Pick **From**, **To** and a profile (**Normal** / **Wheelchair**) and get the most
+*suitable* route, not just the shortest one, drawn Google-Maps-style with turn-by-turn steps.
 
-Team: 3 people. Timeline: ~1 month. Budget: free tiers only.
+The full product plan is in [`Plan.md`](Plan.md). This README covers what is built and how to run it.
 
----
+## Stack
 
-## 1. What is in / out of scope
-
-**Must have**
-
-- Full-IITK base map, viewport locked to the campus, opening on the Academic Area
-- Academic Area boundary polygon drawn on the map (the "detailed coverage" zone)
-- Search From / To among Academic Area buildings, entrances, landmarks
-- Profiles: Normal, Wheelchair (Crutches / Elderly / Visually impaired only if time permits)
-- Mapped accessibility features: ramps, stairs, skywalks, crossings, elevators,
-  accessible entrances, benches, rest areas
-- Click any feature → popup with its accessibility attributes and last-checked date
-- Route rendering with a short summary (distance, ramps used, stairs avoided)
-
-**Dropped**
-
-- Complaint / problem reporting, AI classification, admin dashboard
-- Real-time updates, user accounts, database writes from the website
-- Detailed mapping outside the Academic Area
-- Turn-by-turn / voice / live blue-dot navigation, native mobile app
-- PostGIS / any server database (not needed at this data size — see §4)
-
----
-
-## 2. Architecture
-
-```
-            Field survey (phone GPS + photos + notes)
-                            │
-                            ▼
-                 JOSM (edit + validate)
-                            │  upload
-                            ▼
-              OpenStreetMap database (global)
-                            │
-        ┌───────────────────┴───────────────────┐
-        │ Overpass API (bbox = IIT Kanpur)       │  npm run data:fetch
-        ▼                                       │
-  data/raw/iitk.osm.json  (committed snapshot)  │
-        │                                       │
-        │  npm run data:build                    │
-        ▼                                       │
-  public/data/features.geojson   ← accessibility layer (Academic Area)
-  data/graph.json                ← pedestrian routing graph (nodes/edges/tags)
-  public/data/places.json        ← searchable buildings / entrances
-  public/data/academic-area.geojson ← hand-drawn boundary polygon
-        │
-        ▼
-  Next.js (TypeScript) on Vercel Hobby tier
-    ├─ MapLibre GL JS map, basemap = free OSM-based tiles (see §5)
-    ├─ /api/route  → profile-weighted Dijkstra over data/graph.json
-    └─ UI: From/To search, profile picker, feature popups, route summary
-```
-
-Two data layers, kept separate:
-
-| Layer | Lives in | Edited with | Contains |
-|---|---|---|---|
-| Geography + accessibility tags | OpenStreetMap | JOSM | footways, steps, ramps (`incline`, `width`, `surface`, `wheelchair`), skywalks, entrances, elevators, benches, crossings |
-| App-only extras | `data/overrides.json` in this repo (keyed by OSM id) | text editor | photos, survey notes, anything OSM tagging cannot express |
-
-We never edit the exported OSM JSON by hand. Fix the source (OSM via JOSM, or
-the override file) and rebuild.
-
----
-
-## 3. Where map editing happens and where data lives
-
-1. **JOSM is only an editor.** Download the IITK area into JOSM → survey → add
-   or retag features → run the JOSM Validator → upload. After upload the data
-   lives in the global OSM database, not in JOSM.
-2. Save a local `.osm` file of each editing session as a backup
-   (`data/josm-sessions/`, optional). The build script can also read a `.osm`
-   file directly, so unuploaded edits can be tested in the website first.
-3. **Refreshing the site after edits:** `npm run data:fetch && npm run data:build`,
-   commit the regenerated files, push. Vercel redeploys automatically. Overpass
-   usually reflects OSM uploads within minutes. No live sync is needed for the
-   demo; a fixed snapshot is fine.
-4. The campus bounding box and the Academic Area polygon are stored in the repo
-   (`data/config.ts` and `public/data/academic-area.geojson`). Approximate
-   campus box to verify in overpass-turbo before use:
-   `south 26.495, west 80.215, north 26.530, east 80.250`.
-
-### OSM tagging cheat-sheet (use standard tags, never invent new ones)
-
-| Feature | Tags |
+| Concern | Choice |
 |---|---|
-| Ramp | `highway=footway` + `incline=6%` (or `up`/`down`), `width=1.5`, `surface=concrete`, `handrail=yes`, `wheelchair=yes`, `ramp=yes` |
-| Staircase | `highway=steps`, `step_count=12`, `handrail=yes`, `width=`, `ramp=no` or `ramp:wheelchair=yes` if a ramp runs beside it |
-| Skywalk | `highway=footway` + `bridge=yes` + `layer=1`, `covered=yes`, `lit=yes`, `wheelchair=` |
-| Crossing | node `highway=crossing`, `crossing=marked/unmarked`, `kerb=lowered/raised`, `tactile_paving=yes/no` |
-| Elevator | node `highway=elevator`, `wheelchair=yes`, `level=` |
-| Accessible entrance | node on building outline `entrance=main/yes`, `wheelchair=yes/limited/no`, `door=`, `width=` |
-| Bench | node `amenity=bench`, `seats=3`, `backrest=yes`, `armrest=yes`, `shelter=yes` (shade) |
-| Rest area | `leisure=picnic_table` / `amenity=shelter` + `bench=yes`, `drinking_water=yes` nearby |
-| Condition | `smoothness=excellent/good/intermediate/bad`, `check_date=YYYY-MM-DD` |
+| UI | React 19 + JSX, Vite 7 (no TypeScript) |
+| Map | MapLibre GL JS, OpenFreeMap vector tiles (free, no key) |
+| Routing | Profile-weighted A*/Dijkstra written in plain JS, runs **in the browser** over `public/data/graph.json` (no server) |
+| Search | Fuse.js over `public/data/places.json` |
+| Data | OpenStreetMap via Overpass → committed snapshot → build script → static JSON/GeoJSON |
+| Tests | Node's built-in test runner (`node --test`) |
+| Hosting | Any static host (Vercel / Netlify / GitHub Pages) |
 
-Rules the mapper must follow:
+## Run it
 
-- Connectivity matters more than centimetre accuracy. Every ramp / stair /
-  skywalk must **share a node** with the footway it joins. Run Validator before
-  each upload ("Way end node near other way", "Crossing ways").
-- Use Bing / Esri / Maxar imagery inside JOSM. Never trace from Google Maps
-  (licence-incompatible with OSM).
-- Each team member uses their own OSM account, writes meaningful changeset
-  comments, and adds the hashtag `#IITKAccessible` so edits can be found later.
+```bash
+npm install
+npm run dev        # http://localhost:5173
+npm test           # routing unit tests + campus integration tests
+npm run build      # production build into dist/
+```
 
----
+## Data pipeline (how the map gets updated)
 
-## 4. Routing (the project's contribution)
+```
+OpenStreetMap  ──npm run data:fetch──▶  data/raw/iitk.osm.json  ──npm run data:build──▶  public/data/*
+  (edit in JOSM)                          (committed snapshot)                            (what the site loads)
+```
 
-- Build a graph from OSM ways with `highway` in
-  `footway, path, pedestrian, steps, corridor, living_street, residential,
-  service, unclassified, tertiary, elevator`. Nodes = OSM nodes, edges =
-  consecutive node pairs with haversine length and the parent way's tags.
-- Snap From / To to the nearest graph node (prefer the building's `entrance` nodes).
-- Cost per edge = `length × surfaceFactor + penalties`, where penalties and
-  factors depend on the profile. Dijkstra (or A*) in TypeScript; the graph is
-  a few thousand nodes so a request finishes in milliseconds.
+1. Survey, then edit the map in **JOSM** (or the OSM web editor) using standard tags — see the cheat-sheet in `Plan.md` §3. Upload with the changeset hashtag `#IITKAccessible`.
+2. Refresh the site's data:
+   ```bash
+   npm run data:refresh      # = data:fetch + data:build
+   ```
+   Commit the regenerated `data/raw/iitk.osm.json` and `public/data/*`, push, and the deployed site updates.
+3. To preview **unuploaded** JOSM edits first, save the session as `.osm` and build straight from it:
+   ```bash
+   node scripts/build-data.mjs --file data/josm-sessions/2026-09-10.osm
+   ```
+   (`.osm` files are git-ignored; JOSM's single-quoted attributes and `action=` marks are understood.)
+   If Overpass lags behind a fresh upload, fetch straight from the live API instead: `node scripts/fetch-osm.mjs --osm-api`.
+4. App-only extras that OSM tags cannot hold (photos, survey notes) go in `data/overrides.json`, keyed by OSM id.
+
+`npm run data:fetch` tries three Overpass mirrors and falls back to the OSM API. The snapshot is committed so builds are reproducible and the site never depends on Overpass being up.
+
+### Generated files (`public/data/`)
+
+| File | Contents |
+|---|---|
+| `graph.json` | Level-aware routing graph: `nodes` (`"<osmId>@<level>" → [lon, lat, level]`), `edges` (`[from, to, metres, wayId]`), `ways` (tags per way, plus synthetic `elev<nodeId>` lifts), `nodeTags` |
+| `buildings.geojson` | Building footprints (closed ways **and** multipolygon relations) with name, floors, entrance count, `inAcademicArea` |
+| `indoor.geojson` | Corridors, rooms and doors with their `level`, for the floor switcher |
+| `features.geojson` | Accessibility features: ramps, stairs, skywalks, crossings, lifts, entrances, benches, rest areas, toilets, drinking water |
+| `places.json` | Search index: buildings (with entrance nodes), entrances, **rooms** (e.g. "Room 201 (Tutorial Block)", "Lecture Hall 9"), landmarks |
+| `qa.json` | Data-quality issues for the mapping team (see below) |
+| `academic-area.geojson` | Hand-drawn detailed-coverage polygon (edit by hand) |
+| `meta.json` | Counts and snapshot timestamp shown in the UI footer |
+
+## Floors and level changes
+
+Every graph node is `"<osmNodeId>@<level>"`. A way tagged `level=1` connects its nodes on floor 1 only; outdoor ways without a `level` tag are floor 0. Two floors are joined **only** through:
+
+| Connector in OSM | Who can use it |
+|---|---|
+| `highway=steps` + `level=0;1` | Normal only (forbidden for wheelchair unless `ramp:wheelchair=yes`) |
+| `highway=footway` + `ramp=yes` + `incline=6%` + `level=0;1` | Both; cost depends on incline |
+| node `highway=elevator` + `level=0;1;2` | Both (×0.8 for wheelchair, +20 s wait for normal) |
+
+Nothing else joins floors: a level-0 and a level-1 corridor that share a node without stairs there is a wall. The router picks whichever connector makes the whole trip cheapest, so "use the nearest ramp" falls out of the shortest-path search. Directions say "Take the stairs up to Level 1 (14 steps)", "Take the ramp down to Ground (6%)", "Take the lift to Level 2". The floor switcher (G / 1 / 2) on the map filters indoor rooms, corridors and features; the route is drawn solid on the selected floor and dashed on other floors.
+
+Mapping rules that make this work (full guide in the chat/plan): each floor uses its own nodes; only stairs/ramps/lifts share nodes across floors; entrance nodes sit **on** the building outline and are shared with the corridor or the stairs; `level=a;b` only on connectors.
+
+## Doors, aliases and building rules
+
+- Searching a building routes to **one of its doors**; the router tries every mapped door before it ever falls back to "nearest path". Doors are not listed as separate search entries unless they have their own name.
+- Short forms work: `LH7`, `LH 7`, `L7` → Lecture Hall 7; OSM `short_name` / `alt_name` / `official_name` are indexed too, and a room's number (`202`) finds "Room 202 (Tutorial Block)".
+- `data/routing-rules.json` holds hand-written rules per building. For the Tutorial Block: room floor from the number (1xx → ground, 2xx → level 1) when OSM has no `level`, and fixed arrival doors — wheelchair: node 2734116498 (ground, right side) / node 14152492797 (level 1, right side, via the ramp); normal: any of those or the top door 13657840007.
+- A staircase is never a wheelchair path, whatever it is tagged; a ramp beside stairs must be drawn as its own `ramp=yes` way.
+
+## Map layers and colours
+
+The layer picker (bottom-left) switches between **Buildings** (base map + building names) and **Paths** (every walkable way): ground paths `rgb(122,198,255)`, level 1+ / skywalks `rgb(2,109,180)`, ramps `rgb(255,237,90)`, stairs `rgb(255,176,55)`, the chosen route `rgb(255,0,255)` (with a stairs/ramp-coloured casing on connector sections). Colours live in `PATH_COLORS` in `data/config.js`; the paths come from `public/data/paths.geojson`. URL: `?mode=buildings`.
+
+## Map data check (QA)
+
+`npm run data:build` also writes `public/data/qa.json`, shown in the site's **Map data check** panel and as dots on the map (`?qa=1`). It flags: disconnected path islands, entrances not on any path, `level=a;b` footways without ramp/stairs tags (they act as free level changes), stairs/ramps ending in mid-air, floors sharing a node without a connector, ramps steeper than 8 %, and Academic-Area buildings with no entrance node. Each item has *View on OSM* and *Open in JOSM* (JOSM Remote Control) links.
+
+## Routing rules
+
+Cost per edge = `length × factor + penalties`. Forbidden edges are simply never used.
 
 | Rule | Normal | Wheelchair |
 |---|---|---|
-| `highway=steps` | ×1.2 | forbidden unless `ramp:wheelchair=yes` |
+| `highway=steps` | ×1.2 **+ 15 m per flight** | forbidden unless `ramp:wheelchair=yes` |
 | `wheelchair=no` | ×1 | forbidden |
-| `incline` > 8 % (or `steep`) | ×1 | ×6 |
-| `incline` 5–8 % | ×1 | ×2.5 |
+| ramp (`ramp=yes`, `ramp:wheelchair=yes`, or a sloped `level=0;1` footway) | ×1 | **always usable, ×0.8** (incline ignored — campus ramps are built for wheelchairs) |
+| `incline` > 8 % or `steep` on an ordinary path (not a ramp) | ×1 | ×6 |
+| `incline` 5–8 % on an ordinary path | ×1 | ×2.5 |
 | `width` < 0.9 m | ×1 | ×4 |
-| `surface` in gravel/sand/ground/unpaved | ×1.1 | ×3 |
+| loose surface (gravel/sand/ground/unpaved…) | ×1.1 | ×3 |
 | `smoothness` bad/very_bad | ×1.1 | ×4 |
 | crossing with `kerb=raised` | +5 m | +200 m |
-| `wheelchair=yes` ramp / `highway=elevator` | ×1 | ×0.8 (preferred) |
+| confirmed ramp (`wheelchair=yes`) / `highway=elevator` | ×1 | ×0.8 |
+| roads without a sidewalk (both profiles prefer footways) | ×1.1–1.35 | ×1.1–1.35 |
 
-If Wheelchair finds no path, tell the user honestly ("No step-free route
-known yet between these points") instead of silently returning the Normal route.
+If the Wheelchair profile finds no path the UI says *"No step-free route known yet between these points"* rather than silently falling back. When Wheelchair is selected the shortest Normal route is also computed and drawn dashed grey for comparison ("Avoids 2 staircases on the shortest route (+120 m)").
 
-Both endpoints must be inside the Academic Area polygon; otherwise the UI shows
-"Detailed accessible routing is currently available inside the IITK Academic
-Area only."
+Routing currently works across the whole campus using whatever OSM already has; endpoints outside the Academic Area produce a warning, not a refusal. Flip `RESTRICT_ROUTING_TO_ACADEMIC_AREA` in `data/config.js` to enforce the strict behaviour from the plan.
 
----
+## Using the site
 
-## 5. Web stack (all free)
+- Search a building/room/entrance/landmark in **A** and **B**, or click anywhere on the map → *Directions from here / to here* (a click on an upper floor drops the pin on that floor). Clicking a building, room or feature shows its attributes, floor and last-checked date.
+- Hover a direction step to highlight it on the map; click it to zoom there and switch to that floor.
+- Links are shareable: `/?from=way/123&to=Rajeev%20Motwani%20Building&profile=wheelchair&level=1` (ids or names both work).
+- Layer toggles (buildings, indoor, features, snap points) are at the bottom of the panel. *Snap points* shows exactly where each endpoint joined the path network, useful when a route starts somewhere unexpected.
 
-| Concern | Choice | Cost |
-|---|---|---|
-| Framework | Next.js 15, TypeScript, Tailwind, shadcn/ui | free |
-| Map | MapLibre GL JS (`react-map-gl/maplibre`) | free |
-| Basemap tiles | OpenFreeMap vector tiles (no key, no quota). Fallback: MapTiler free tier or `tile.openstreetmap.org` raster (attribution required, light use only) | free |
-| Accessibility layer | our own `features.geojson` rendered by MapLibre — always matches our snapshot, independent of tile refresh delays | free |
-| Search | `places.json` built from OSM building/entrance names + client-side fuzzy search (Fuse.js). No geocoder service needed | free |
-| Routing API | Next.js Route Handler `/api/route`, graph JSON loaded in memory | free |
-| Hosting | Vercel Hobby (`*.vercel.app` domain, auto-deploy on push) | free |
-| Data refresh | Overpass API + `osmtogeojson` in `scripts/` | free |
-| Optional later | Protomaps PMTiles extract of IITK (~few MB static file) if we want tiles restricted to campus only | free |
-
-Map behaviour:
-
-- `maxBounds` = IITK campus box so users cannot pan away; `minZoom` ≈ 14.
-- Initial view = Academic Area at zoom ≈ 16.5.
-- Outside the Academic Area polygon: base map only, lightly dimmed, with a
-  "coverage limited" hint. Inside: full feature layer + popups + routing.
-
----
-
-## 6. Repository layout
+## Repository layout
 
 ```
 .
-├── app/                    Next.js app router (map page, /api/route)
-├── components/             Map, SearchBox, ProfilePicker, FeaturePopup, RouteSummary
-├── lib/routing/            graph loader, profiles, dijkstra, snapping
-├── lib/geo/                haversine, point-in-polygon, bbox helpers
+├── index.html, vite.config.js
+├── src/
+│   ├── main.jsx, App.jsx, styles.css
+│   ├── components/      MapView, SearchBox, ProfilePicker, FeaturePopup, RouteSummary, FloorSwitcher, QaPanel, QaPopup
+│   └── lib/
+│       ├── routing/     graph, profiles, dijkstra (A*), snap, directions, route
+│       ├── geo/         haversine, pointInPolygon, bbox
+│       ├── levels.js    level parsing, node keys, labels
+│       ├── features.js  OSM tags → feature kind
+│       ├── osmLinks.js  OSM / JOSM remote-control links
+│       └── data.js      loaders
 ├── scripts/
-│   ├── fetch-osm.ts        Overpass query → data/raw/iitk.osm.json
-│   └── build-data.ts       raw OSM (json or .osm) → geojson / graph / places
+│   ├── fetch-osm.mjs    Overpass / OSM API → data/raw/iitk.osm.json
+│   ├── build-data.mjs   raw OSM → public/data/*
+│   └── osm-xml.mjs      .osm (JOSM) parser
 ├── data/
-│   ├── config.ts           campus bbox, academic-area centre, zoom defaults
-│   ├── raw/                committed OSM snapshot (source of truth for a build)
-│   ├── overrides.json      app-only extras keyed by OSM id
-│   └── graph.json          generated routing graph
-├── public/data/            features.geojson, places.json, academic-area.geojson
-└── PLAN.md
+│   ├── config.js        campus bbox, zoom, profiles, feature kinds, routable highways
+│   ├── raw/             committed OSM snapshot
+│   ├── overrides.json   app-only extras keyed by OSM id
+│   └── josm-sessions/   optional .osm backups (git-ignored)
+├── public/data/         generated GeoJSON/JSON + hand-drawn academic-area.geojson
+├── tests/               profiles, dijkstra, campus integration
+└── Plan.md
 ```
 
----
+## Current OSM coverage (snapshot in repo)
 
-## 7. Team split
+177 named buildings (incl. 5 multipolygons such as P K Kelkar Library), 124 entrances, 31 searchable rooms, 6,743 path points on 3 floors, 26 staircases, 2 ramps, 43 elevated walkways, **no lifts yet**, 4 crossings, and almost no kerb/width/surface tags. The Lecture Hall Complex and Tutorial Block have indoor corridors on levels 0–1. The *Map data check* panel lists what still needs fixing in JOSM (dead-end stairs, `level=1;0` footways that should be `level=1`, unconnected entrances at LH16–20, …).
 
-| Person | Owns |
-|---|---|
-| 1 — Mapping + data | Survey coordination, JOSM editing, tagging QA, Academic Area polygon, `check_date` upkeep, `overrides.json` |
-| 2 — Frontend | Map page, search, profile picker, feature popups, route rendering, mobile layout |
-| 3 — Data pipeline + routing | `fetch-osm` / `build-data` scripts, graph builder, profile weights, `/api/route`, tests for connectivity and forbidden-edge rules |
-
-Everyone surveys when needed.
-
----
-
-## 8. Four-week plan
-
-| Week | Goal | Done when |
-|---|---|---|
-| 1 | Map on screen | Overpass snapshot committed; Next.js + MapLibre page deployed to Vercel; viewport locked to IITK; Academic Area polygon drawn; JOSM set up; survey sheet designed; survey starts |
-| 2 | Accessibility layer | Features from OSM render with icons; clicking shows attributes + check date; places search works; first JOSM uploads done and pulled into the snapshot |
-| 3 | Routing | Normal and Wheelchair routes differ where they should; endpoints outside Academic Area rejected gracefully; no-route case handled |
-| 4 | Polish + demo | Extra profiles if time; mobile layout; README; data refresh rehearsed end-to-end; demo script with 3–4 showcase routes |
-
-First task before heavy coding: run the Overpass query for the campus box in
-overpass-turbo and look at what is already mapped. That decides whether the
-survey needs to add 10 features or 100.
+Data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, ODbL.
